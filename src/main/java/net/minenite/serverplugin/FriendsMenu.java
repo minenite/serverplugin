@@ -1,4 +1,4 @@
-package net.minenite.friends;
+package net.minenite.serverplugin;
 
 import java.time.Duration;
 import java.util.ArrayList;

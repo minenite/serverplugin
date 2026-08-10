@@ -1,4 +1,4 @@
-package net.minenite.friends;
+package net.minenite.serverplugin;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,14 +26,17 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Friends across a proxied network: a menu, friendly fire control, and travel.
+ * The network's core plugin, running on every backend.
  *
- * <p>The pieces this needs are split across two places. The menu and combat rules
- * are Bukkit, so they live here on the backend. Moving a player between servers
- * belongs to the proxy, and is asked for over the plugin messaging channel that
- * Velocity and BungeeCord both implement.
+ * <p>Currently friends, friendly fire and travel between servers; the name is
+ * deliberately about where it runs rather than what it does today, because more
+ * belongs here than friendship.
+ *
+ * <p>Its counterpart is ProxyPlugin, on the proxy. The split is not arbitrary:
+ * menus and combat rules are Bukkit and can only exist on a backend, while moving
+ * a player between servers is something only the proxy can do.
  */
-public class MineniteFriends extends JavaPlugin implements Listener {
+public class ServerPlugin extends JavaPlugin implements Listener {
 
     /**
      * The channel the proxy listens on for requests like "move this player".

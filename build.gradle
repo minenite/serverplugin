@@ -2,9 +2,9 @@ plugins {
     id 'java'
 }
 
-group = 'net.minenite.friends'
+group = 'net.minenite.serverplugin'
 version = '1.0.0'
-base { archivesName = 'MineniteFriends' }
+base { archivesName = 'ServerPlugin' }
 
 repositories {
     mavenCentral()

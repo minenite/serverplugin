@@ -1,15 +1,15 @@
-name: MineniteFriends
+name: ServerPlugin
 version: 1.0.0
-main: net.minenite.friends.MineniteFriends
+main: net.minenite.serverplugin.ServerPlugin
 api-version: '1.21'
 author: icedmoca
-description: Friends list with a head-based menu, friendly fire control, and cross-server joining.
+description: Core plugin for the network - friends, friendly fire and cross-server travel.
 
 commands:
   friend:
-    description: Open the friends menu, or add a friend by name.
+    description: Core plugin for the network - friends, friendly fire and cross-server travel.
     usage: /friend [username]
     aliases: [friends]
   join:
-    description: Travel to the server a player is on.
+    description: Core plugin for the network - friends, friendly fire and cross-server travel.
     usage: /join <username>
