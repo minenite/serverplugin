@@ -1,9 +1,10 @@
 package net.minenite.friends;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +49,7 @@ public class MineniteFriends extends JavaPlugin implements Listener {
     private FriendStore store;
     private FriendsMenu menu;
     private String serverName;
+    private Path travelDirectory;
 
     @Override
     public void onEnable() {
@@ -68,6 +70,13 @@ public class MineniteFriends extends JavaPlugin implements Listener {
 
         this.menu = new FriendsMenu(this.store);
         this.serverName = getConfig().getString("server-name", getServer().getName());
+
+        this.travelDirectory = shared.resolve("travel");
+        try {
+            Files.createDirectories(this.travelDirectory);
+        } catch (IOException failed) {
+            getLogger().warning("Could not create " + this.travelDirectory + "; travel between servers will not work");
+        }
 
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getMessenger().registerOutgoingPluginChannel(this, PROXY_CHANNEL);
@@ -250,18 +259,31 @@ public class MineniteFriends extends JavaPlugin implements Listener {
         connectTo(player, presence.server());
     }
 
+    /**
+     * Asks the proxy to move a player, by leaving the request where it will see it.
+     *
+     * <p>The normal way is a plugin message on the proxy channel, and that is what
+     * this did at first. It does not work here: CardForge's
+     * {@code CraftPlayer.sendPluginMessage} validates its arguments and then drops
+     * the message - its send path is still a TODO - so the request left no trace
+     * and the player was told they were travelling and then simply was not.
+     *
+     * <p>The proxy plugin watches this directory instead. Both sides share a disk,
+     * which is what makes it possible; it is a workaround, and it goes away when
+     * plugin messaging is implemented in CardForge.
+     */
     private void connectTo(Player player, String server) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (DataOutputStream out = new DataOutputStream(bytes)) {
-            out.writeUTF("Connect");
-            out.writeUTF(server);
-        } catch (IOException impossible) {
-            // Writing to a byte array does not fail; if it somehow does, there is
-            // nothing useful to tell the player.
-            getLogger().warning("Could not build the proxy request: " + impossible.getMessage());
-            return;
+        Path request = this.travelDirectory.resolve(player.getUniqueId() + ".travel");
+        try {
+            // Written elsewhere and moved into place, so the proxy cannot read a
+            // half-written file on its next pass.
+            Path staged = this.travelDirectory.resolve(player.getUniqueId() + ".staging");
+            Files.writeString(staged, server, StandardCharsets.UTF_8);
+            Files.move(staged, request, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException failed) {
+            player.sendMessage(ChatColor.RED + "Could not reach the proxy to move you.");
+            getLogger().warning("Could not write a travel request: " + failed.getMessage());
         }
-        player.sendPluginMessage(this, PROXY_CHANNEL, bytes.toByteArray());
     }
 
     // ------------------------------------------------------------------ menu
