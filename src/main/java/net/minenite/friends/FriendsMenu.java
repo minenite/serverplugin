@@ -26,9 +26,11 @@ public final class FriendsMenu {
 
     public static final String LIST_TITLE = ChatColor.DARK_GRAY + "Friends";
     public static final String DETAIL_PREFIX = ChatColor.DARK_GRAY + "Friend: ";
+    public static final String REQUESTS_TITLE = ChatColor.DARK_GRAY + "Friend requests";
 
     private static final int LIST_SIZE = 54;
     private static final int FRIENDLY_FIRE_SLOT = 49;
+    private static final int REQUESTS_SLOT = 53;
 
     private final FriendStore store;
 
@@ -59,6 +61,21 @@ public final class FriendsMenu {
 
         boolean globalFire = this.store.globalFriendlyFire(viewer.getUniqueId());
         inventory.setItem(FRIENDLY_FIRE_SLOT, friendlyFireToggle(globalFire, null));
+
+        // Always present, even at zero: a control that appears only when it has
+        // something in it is a control players never learn is there.
+        int pending = this.store.requestsFor(viewer.getUniqueId()).size();
+        ItemStack requests = label(pending > 0 ? Material.WRITABLE_BOOK : Material.BOOK,
+                (pending > 0 ? ChatColor.YELLOW : ChatColor.GRAY) + "Friend requests: " + pending,
+                pending > 0
+                        ? List.of(ChatColor.GRAY + "Click to answer them")
+                        : List.of(ChatColor.DARK_GRAY + "Nobody is waiting"));
+        if (pending > 0) {
+            // The stack size puts the number on the icon itself, so it is legible
+            // without reading the name.
+            requests.setAmount(Math.min(pending, 64));
+        }
+        inventory.setItem(REQUESTS_SLOT, requests);
         return inventory;
     }
 
@@ -92,6 +109,40 @@ public final class FriendsMenu {
         inventory.setItem(15, label(Material.REDSTONE_BLOCK, ChatColor.RED + "Remove friend",
                 List.of(ChatColor.GRAY + "Removes them for both of you")));
 
+        inventory.setItem(22, label(Material.ARROW, ChatColor.GRAY + "Back", List.of()));
+        return inventory;
+    }
+
+    /** Incoming requests, one head each. */
+    public Inventory openRequests(Player viewer) {
+        List<FriendStore.Request> requests = this.store.requestsFor(viewer.getUniqueId());
+        Inventory inventory = Bukkit.createInventory(null, 27, REQUESTS_TITLE);
+
+        int slot = 0;
+        for (FriendStore.Request request : requests) {
+            if (slot >= 18) {
+                break;
+            }
+            ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+            ItemMeta meta = item.getItemMeta();
+            if (meta instanceof SkullMeta skull) {
+                skull.setOwningPlayer(Bukkit.getOfflinePlayer(request.uuid()));
+            }
+            if (meta != null) {
+                meta.setDisplayName(ChatColor.YELLOW + request.name());
+                meta.setLore(List.of(
+                        ChatColor.GRAY + "Asked " + describeDuration(
+                                Duration.ofMillis(System.currentTimeMillis() - request.sent())) + " ago",
+                        ChatColor.GREEN + "Left click to accept",
+                        ChatColor.RED + "Right click to decline"));
+                item.setItemMeta(meta);
+            }
+            inventory.setItem(slot++, item);
+        }
+
+        if (requests.isEmpty()) {
+            inventory.setItem(13, label(Material.PAPER, ChatColor.GRAY + "No requests waiting", List.of()));
+        }
         inventory.setItem(22, label(Material.ARROW, ChatColor.GRAY + "Back", List.of()));
         return inventory;
     }
@@ -156,6 +207,10 @@ public final class FriendsMenu {
 
     public static int friendlyFireSlot() {
         return FRIENDLY_FIRE_SLOT;
+    }
+
+    public static int requestsSlot() {
+        return REQUESTS_SLOT;
     }
 
     /** "3 days", "5 hours" - one unit is enough for a menu. */

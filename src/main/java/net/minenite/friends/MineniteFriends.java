@@ -34,8 +34,16 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public class MineniteFriends extends JavaPlugin implements Listener {
 
-    /** The channel Velocity and BungeeCord both listen on for proxy requests. */
-    private static final String PROXY_CHANNEL = "BungeeCord";
+    /**
+     * The channel the proxy listens on for requests like "move this player".
+     *
+     * <p>The namespaced form, not the legacy "BungeeCord" alias. Paper rewrites
+     * the alias to this before it reaches the wire; CardForge's messenger does
+     * not, so a message sent under the old name left the server addressed to a
+     * channel the proxy never listens on - the player was told they were being
+     * sent somewhere and then simply was not.
+     */
+    private static final String PROXY_CHANNEL = "bungeecord:main";
 
     private FriendStore store;
     private FriendsMenu menu;
@@ -187,14 +195,38 @@ public class MineniteFriends extends JavaPlugin implements Listener {
             return;
         }
 
-        if (this.store.addFriend(player.getUniqueId(), player.getName(), targetId, resolvedName)) {
-            player.sendMessage(ChatColor.GREEN + "You are now friends with " + resolvedName + ".");
-            Player friendOnline = Bukkit.getPlayer(targetId);
-            if (friendOnline != null) {
-                friendOnline.sendMessage(ChatColor.GREEN + player.getName() + " added you as a friend.");
+        if (this.store.areFriends(player.getUniqueId(), targetId)) {
+            player.sendMessage(ChatColor.GRAY + "You are already friends with " + resolvedName + ".");
+            return;
+        }
+
+        // If they already asked you, treat this as the answer rather than sending a
+        // second request back the other way and leaving both waiting.
+        if (this.store.hasRequest(player.getUniqueId(), targetId)) {
+            acceptRequest(player, targetId, resolvedName);
+            return;
+        }
+
+        if (this.store.addRequest(targetId, player.getUniqueId(), player.getName())) {
+            player.sendMessage(ChatColor.GREEN + "Friend request sent to " + resolvedName + ".");
+            Player recipient = Bukkit.getPlayer(targetId);
+            if (recipient != null) {
+                recipient.sendMessage(ChatColor.GREEN + player.getName() + " wants to be your friend. "
+                        + ChatColor.GRAY + "Open /friends to answer.");
             }
         } else {
-            player.sendMessage(ChatColor.GRAY + "You are already friends with " + resolvedName + ".");
+            player.sendMessage(ChatColor.GRAY + "You have already asked " + resolvedName + ".");
+        }
+    }
+
+    /** Turns a waiting request into a friendship on both sides. */
+    private void acceptRequest(Player player, UUID requesterId, String requesterName) {
+        this.store.removeRequest(player.getUniqueId(), requesterId);
+        this.store.addFriend(player.getUniqueId(), player.getName(), requesterId, requesterName);
+        player.sendMessage(ChatColor.GREEN + "You are now friends with " + requesterName + ".");
+        Player online = Bukkit.getPlayer(requesterId);
+        if (online != null) {
+            online.sendMessage(ChatColor.GREEN + player.getName() + " accepted your friend request.");
         }
     }
 
@@ -239,7 +271,8 @@ public class MineniteFriends extends JavaPlugin implements Listener {
         String title = event.getView().getTitle();
         boolean isList = title.equals(FriendsMenu.LIST_TITLE);
         boolean isDetail = title.startsWith(FriendsMenu.DETAIL_PREFIX);
-        if (!isList && !isDetail) {
+        boolean isRequests = title.equals(FriendsMenu.REQUESTS_TITLE);
+        if (!isList && !isDetail && !isRequests) {
             return;
         }
 
@@ -256,12 +289,41 @@ public class MineniteFriends extends JavaPlugin implements Listener {
 
         if (isList) {
             handleListClick(player, event.getRawSlot(), clicked);
+        } else if (isRequests) {
+            handleRequestClick(player, event.getRawSlot(), clicked, event.isRightClick());
         } else {
             handleDetailClick(player, title.substring(FriendsMenu.DETAIL_PREFIX.length()), event.getRawSlot());
         }
     }
 
+    private void handleRequestClick(Player player, int slot, ItemStack clicked, boolean declined) {
+        if (slot == 22) {
+            player.openInventory(this.menu.openList(player));
+            return;
+        }
+        String name = displayName(clicked);
+        if (name == null) {
+            return;
+        }
+        this.store.requestsFor(player.getUniqueId()).stream()
+                .filter(request -> request.name().equals(name))
+                .findFirst()
+                .ifPresent(request -> {
+                    if (declined) {
+                        this.store.removeRequest(player.getUniqueId(), request.uuid());
+                        player.sendMessage(ChatColor.GRAY + "Declined " + request.name() + "'s request.");
+                    } else {
+                        acceptRequest(player, request.uuid(), request.name());
+                    }
+                    player.openInventory(this.menu.openRequests(player));
+                });
+    }
+
     private void handleListClick(Player player, int slot, ItemStack clicked) {
+        if (slot == FriendsMenu.requestsSlot()) {
+            player.openInventory(this.menu.openRequests(player));
+            return;
+        }
         if (slot == FriendsMenu.friendlyFireSlot()) {
             boolean now = !this.store.globalFriendlyFire(player.getUniqueId());
             this.store.setGlobalFriendlyFire(player.getUniqueId(), now);

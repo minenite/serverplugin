@@ -9,6 +9,7 @@ commands:
   friend:
     description: Open the friends menu, or add a friend by name.
     usage: /friend [username]
+    aliases: [friends]
   join:
     description: Travel to the server a player is on.
     usage: /join <username>

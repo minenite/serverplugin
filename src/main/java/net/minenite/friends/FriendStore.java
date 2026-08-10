@@ -183,6 +183,80 @@ public final class FriendStore {
         }
     }
 
+    // --------------------------------------------------------------- requests
+
+    /** Someone who has asked to be your friend. */
+    public record Request(UUID uuid, String name, long sent) {
+    }
+
+    /**
+     * Records that {@code from} wants to be friends with {@code to}.
+     *
+     * <p>Stored on the recipient, because that is who has to act on it and who
+     * needs to see it listed.
+     *
+     * @return false if the same request is already waiting
+     */
+    public boolean addRequest(UUID to, UUID from, String fromName) {
+        if (hasRequest(to, from)) {
+            return false;
+        }
+        modify(this.friendsFile, root -> {
+            JsonObject entry = root.getAsJsonObject(to.toString());
+            if (entry == null) {
+                entry = new JsonObject();
+                entry.add("friends", new JsonObject());
+                root.add(to.toString(), entry);
+            }
+            JsonObject requests = entry.getAsJsonObject("requests");
+            if (requests == null) {
+                requests = new JsonObject();
+                entry.add("requests", requests);
+            }
+            JsonObject record = new JsonObject();
+            record.addProperty("name", fromName);
+            record.addProperty("sent", System.currentTimeMillis());
+            requests.add(from.toString(), record);
+        });
+        return true;
+    }
+
+    public boolean hasRequest(UUID to, UUID from) {
+        return requestsFor(to).stream().anyMatch(request -> request.uuid().equals(from));
+    }
+
+    public List<Request> requestsFor(UUID player) {
+        JsonObject entry = read(this.friendsFile).getAsJsonObject(player.toString());
+        List<Request> requests = new ArrayList<>();
+        if (entry == null) {
+            return requests;
+        }
+        JsonObject list = entry.getAsJsonObject("requests");
+        if (list == null) {
+            return requests;
+        }
+        for (String key : list.keySet()) {
+            JsonObject record = list.getAsJsonObject(key);
+            requests.add(new Request(UUID.fromString(key), record.get("name").getAsString(),
+                    record.get("sent").getAsLong()));
+        }
+        requests.sort((a, b) -> Long.compare(b.sent(), a.sent()));
+        return requests;
+    }
+
+    public void removeRequest(UUID to, UUID from) {
+        modify(this.friendsFile, root -> {
+            JsonObject entry = root.getAsJsonObject(to.toString());
+            if (entry == null) {
+                return;
+            }
+            JsonObject requests = entry.getAsJsonObject("requests");
+            if (requests != null) {
+                requests.remove(from.toString());
+            }
+        });
+    }
+
     // --------------------------------------------------------------- presence
 
     /** Records where someone is, so other servers can find and reach them. */
