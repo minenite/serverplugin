@@ -51,6 +51,16 @@ public class MineniteFriends extends JavaPlugin implements Listener {
     private String serverName;
     private Path travelDirectory;
 
+    /**
+     * Whether this server stops friends hurting each other.
+     *
+     * <p>Per server, not per player, because it is a property of what the server
+     * is for. A server built around friends fighting each other - an arena, a
+     * minigame - wants the hits to land, and no combination of player settings
+     * should be able to break its rules.
+     */
+    private boolean protectFriends;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
@@ -68,8 +78,9 @@ public class MineniteFriends extends JavaPlugin implements Listener {
             return;
         }
 
-        this.menu = new FriendsMenu(this.store);
+        this.menu = new FriendsMenu(this.store, getConfig().getBoolean("friendly-fire-protection", true));
         this.serverName = getConfig().getString("server-name", getServer().getName());
+        this.protectFriends = getConfig().getBoolean("friendly-fire-protection", true);
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -81,7 +92,8 @@ public class MineniteFriends extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getMessenger().registerOutgoingPluginChannel(this, PROXY_CHANNEL);
 
-        getLogger().info("Friends loaded, sharing data at " + shared);
+        getLogger().info("Friends loaded, sharing data at " + shared
+                + (this.protectFriends ? "" : " (friends can hurt each other on this server)"));
     }
 
     // --------------------------------------------------------------- presence
@@ -111,6 +123,10 @@ public class MineniteFriends extends JavaPlugin implements Listener {
      */
     @EventHandler(ignoreCancelled = true)
     public void onDamage(EntityDamageByEntityEvent event) {
+        if (!this.protectFriends) {
+            // This server's own rules win over anyone's friends list.
+            return;
+        }
         if (!(event.getEntity() instanceof Player victim)) {
             return;
         }

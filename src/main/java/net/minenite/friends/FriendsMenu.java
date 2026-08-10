@@ -33,9 +33,11 @@ public final class FriendsMenu {
     private static final int REQUESTS_SLOT = 53;
 
     private final FriendStore store;
+    private final boolean protectFriends;
 
-    public FriendsMenu(FriendStore store) {
+    public FriendsMenu(FriendStore store, boolean protectFriends) {
         this.store = store;
+        this.protectFriends = protectFriends;
     }
 
     /** The list of friends, one head each. */
@@ -184,14 +186,22 @@ public final class FriendsMenu {
     /** The friendly fire control, used for both the global and per-friend cases. */
     private ItemStack friendlyFireToggle(boolean allowed, String friendName) {
         String scope = friendName == null ? "all friends" : friendName;
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + (allowed
+                ? "You can be hurt by " + scope
+                : "You cannot be hurt by " + scope));
+        if (!this.protectFriends) {
+            // Otherwise the setting reads as broken here: the player turns
+            // protection on, gets hit by a friend anyway, and has no way to know
+            // the server overrules it.
+            lore.add(ChatColor.YELLOW + "This server ignores it");
+            lore.add(ChatColor.DARK_GRAY + "Friends can fight here");
+        }
+        lore.add(ChatColor.DARK_GRAY + "Click to change");
         return label(allowed ? Material.IRON_SWORD : Material.SHIELD,
                 (allowed ? ChatColor.RED : ChatColor.GREEN) + "Friendly fire: "
                         + (allowed ? "on" : "off"),
-                List.of(
-                        ChatColor.GRAY + (allowed
-                                ? "You can be hurt by " + scope
-                                : "You cannot be hurt by " + scope),
-                        ChatColor.DARK_GRAY + "Click to change"));
+                lore);
     }
 
     private ItemStack label(Material material, String name, List<String> lore) {

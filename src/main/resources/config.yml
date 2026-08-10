@@ -8,3 +8,13 @@ shared-directory: /home/dad/Desktop/minenitemodded/shared
 # The name this server is known by on the proxy, as it appears in velocity.toml.
 # Used to tell friends where you are, and to send players to you.
 server-name: lobby
+
+# Whether this server stops friends hurting each other.
+#
+# Per server, not per player, because it is a property of what the server is for.
+# A server built around friends fighting - an arena, a minigame - wants the hits
+# to land, and no combination of player settings should override its rules.
+#
+# When false, the friends menu says so rather than showing a setting that quietly
+# does nothing here.
+friendly-fire-protection: true
