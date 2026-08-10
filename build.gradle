@@ -1,0 +1,28 @@
+plugins {
+    id 'java'
+}
+
+group = 'net.minenite.friends'
+version = '1.0.0'
+base { archivesName = 'MineniteFriends' }
+
+repositories {
+    mavenCentral()
+    maven { name = 'PaperMC'; url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+    // The same Paper API version CardForge implements. Compiling against the
+    // CardForge jar directly seems tidier, but the copy bundled there is partial -
+    // its JavaPlugin is missing methods the interface declares - so the full
+    // artifact is the one to build against.
+    compileOnly 'io.papermc.paper:paper-api:26.2.build.110-stable'
+    compileOnly 'com.google.code.gson:gson:2.11.0'
+    // Paper's API is annotated with these; without them javac cannot even render
+    // an error message about the API, and crashes while formatting one.
+    compileOnly 'org.jetbrains:annotations:24.1.0'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

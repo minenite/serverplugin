@@ -1,0 +1,10 @@
+# Where the network's shared friends data lives. Every backend must point at the
+# same directory - a friends list that stopped at the server boundary would
+# defeat the point of having one.
+#
+# Defaults to a "shared" folder beside the server directories.
+shared-directory: /home/dad/Desktop/minenitemodded/shared
+
+# The name this server is known by on the proxy, as it appears in velocity.toml.
+# Used to tell friends where you are, and to send players to you.
+server-name: lobby

@@ -1,0 +1,14 @@
+name: MineniteFriends
+version: 1.0.0
+main: net.minenite.friends.MineniteFriends
+api-version: '1.21'
+author: icedmoca
+description: Friends list with a head-based menu, friendly fire control, and cross-server joining.
+
+commands:
+  friend:
+    description: Open the friends menu, or add a friend by name.
+    usage: /friend [username]
+  join:
+    description: Travel to the server a player is on.
+    usage: /join <username>
