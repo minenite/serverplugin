@@ -395,6 +395,68 @@ public final class FriendStore {
         return arrivals;
     }
 
+    // --------------------------------------------------------------- notices
+
+    /**
+     * Leaves a message for one player, wherever on the network they are.
+     *
+     * <p>Bukkit can only reach players on its own server, and the person being
+     * told about a friend request is often somewhere else - that being rather the
+     * point of a network-wide friends list.
+     *
+     * <p>Unlike an arrival, a notice is for exactly one person, so whichever
+     * server delivers it deletes it. Nobody else needs to see it and nobody
+     * should see it twice.
+     */
+    public void sendNotice(UUID to, String message) throws IOException {
+        Path directory = this.friendsFile.getParent().resolve("notices");
+        Files.createDirectories(directory);
+        long now = System.currentTimeMillis();
+        Path staged = directory.resolve(to + "-" + now + ".staging");
+        Files.writeString(staged, message, StandardCharsets.UTF_8);
+        Files.move(staged, directory.resolve(to + "-" + now + ".notice"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /**
+     * Takes any messages waiting for a player, removing them as it goes.
+     *
+     * <p>Anything more than two minutes old is dropped undelivered: they were not
+     * online to receive it, and a friend request announced long after the fact is
+     * worse than silence.
+     */
+    public List<String> takeNotices(UUID player) {
+        Path directory = this.friendsFile.getParent().resolve("notices");
+        List<String> messages = new ArrayList<>();
+        if (!Files.isDirectory(directory)) {
+            return messages;
+        }
+        long expiry = System.currentTimeMillis() - 120_000L;
+        try (java.nio.file.DirectoryStream<Path> files =
+                     Files.newDirectoryStream(directory, player + "-*.notice")) {
+            for (Path file : files) {
+                try {
+                    String name = file.getFileName().toString();
+                    long at = Long.parseLong(name.substring(name.lastIndexOf('-') + 1, name.indexOf(".notice")));
+                    if (at >= expiry) {
+                        messages.add(Files.readString(file, StandardCharsets.UTF_8));
+                    }
+                    Files.deleteIfExists(file);
+                } catch (Exception malformed) {
+                    try {
+                        Files.deleteIfExists(file);
+                    } catch (IOException ignored) {
+                        // Nothing further to do; it expires on the next pass.
+                    }
+                }
+            }
+        } catch (IOException unreadable) {
+            return messages;
+        }
+        return messages;
+    }
+
     // ------------------------------------------------------------------- i/o
 
     private JsonObject read(Path file) {

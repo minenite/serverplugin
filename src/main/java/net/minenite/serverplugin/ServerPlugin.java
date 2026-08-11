@@ -70,6 +70,8 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     private String quitMessage;
     private String friendJoinMessage;
     private String friendJoinElsewhereMessage;
+    private String requestReceivedMessage;
+    private String requestDeclinedMessage;
 
     /** Arrivals already shown, so a poll does not repeat what it saw last time. */
     private long lastArrivalSeen = System.currentTimeMillis();
@@ -99,6 +101,10 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.friendJoinMessage = getConfig().getString("friend-join-message", "&a+ &2%player%");
         this.friendJoinElsewhereMessage = getConfig().getString(
                 "friend-join-elsewhere-message", "&a+ &2%player% &b[&3%server%&b]");
+        this.requestReceivedMessage = getConfig().getString(
+                "friend-request-received", "&e%player% &e&osent you a friend request!");
+        this.requestDeclinedMessage = getConfig().getString(
+                "friend-request-declined", "&e%player% &cdeclined &e&oyour friend request :'(");
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -114,6 +120,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // main thread because it reads the disk; the messages themselves are sent
         // back on it.
         getServer().getScheduler().runTaskTimerAsynchronously(this, this::deliverFriendArrivals, 40L, 20L);
+        getServer().getScheduler().runTaskTimerAsynchronously(this, this::deliverNotices, 40L, 20L);
 
         getLogger().info("Friends loaded, sharing data at " + shared
                 + (this.protectFriends ? "" : " (friends can hurt each other on this server)"));
@@ -157,6 +164,42 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, modded);
             }
         }, 60L);
+    }
+
+    /**
+     * Sends one player a message, wherever they are.
+     *
+     * <p>Straight there if they are on this server; otherwise left in the shared
+     * directory for whichever server has them. Silently dropped if they are
+     * offline everywhere - a friend request is worth telling someone about now,
+     * not on their next login a week later.
+     */
+    private void tell(UUID target, String message) {
+        if (message == null) {
+            return;
+        }
+        Player local = Bukkit.getPlayer(target);
+        if (local != null) {
+            local.sendMessage(message);
+            return;
+        }
+        try {
+            this.store.sendNotice(target, message);
+        } catch (IOException failed) {
+            getLogger().warning("Could not leave a message for " + target + ": " + failed.getMessage());
+        }
+    }
+
+    /** Hands out anything waiting for the players on this server. */
+    private void deliverNotices() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            List<String> waiting = this.store.takeNotices(player.getUniqueId());
+            if (waiting.isEmpty()) {
+                continue;
+            }
+            // Back to the main thread: this ran off it to read the disk.
+            getServer().getScheduler().runTask(this, () -> waiting.forEach(player::sendMessage));
+        }
     }
 
     /** Tells this server who arrived, in green for their friends and grey for the rest. */
@@ -383,11 +426,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
 
         if (this.store.addRequest(targetId, player.getUniqueId(), player.getName())) {
             player.sendMessage(ChatColor.GREEN + "Friend request sent to " + resolvedName + ".");
-            Player recipient = Bukkit.getPlayer(targetId);
-            if (recipient != null) {
-                recipient.sendMessage(ChatColor.GREEN + player.getName() + " wants to be your friend. "
-                        + ChatColor.GRAY + "Open /friends to answer.");
-            }
+            tell(targetId, announcement(this.requestReceivedMessage, player.getName()));
         } else {
             player.sendMessage(ChatColor.GRAY + "You have already asked " + resolvedName + ".");
         }
@@ -499,6 +538,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                     if (declined) {
                         this.store.removeRequest(player.getUniqueId(), request.uuid());
                         player.sendMessage(ChatColor.GRAY + "Declined " + request.name() + "'s request.");
+                        tell(request.uuid(), announcement(this.requestDeclinedMessage, player.getName()));
                     } else {
                         acceptRequest(player, request.uuid(), request.name());
                     }

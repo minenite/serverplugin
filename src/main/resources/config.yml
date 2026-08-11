@@ -33,3 +33,9 @@ quit-message: "&4- &7%player%"
 # on the network, and understands %server%.
 friend-join-message: "&a+ &2%player%"
 friend-join-elsewhere-message: "&a+ &2%player% &b[&3%server%&b]"
+
+# Sent to the person on the receiving end. Delivered wherever they are on the
+# network, or dropped if they are offline everywhere - a friend request is worth
+# hearing about now, not on their next login a week later.
+friend-request-received: "&e%player% &e&osent you a friend request!"
+friend-request-declined: "&e%player% &cdeclined &e&oyour friend request :'("
