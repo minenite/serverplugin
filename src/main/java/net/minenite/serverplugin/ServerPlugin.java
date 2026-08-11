@@ -20,6 +20,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -400,6 +401,35 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             return shooter;
         }
         return null;
+    }
+
+    /**
+     * Takes {@code /msg} before the server's own whisper can answer it.
+     *
+     * <p>Registering the command in plugin.yml is not enough here: CardForge
+     * dispatches through vanilla's Brigadier dispatcher, and Minecraft already
+     * owns /msg along with /w and /tell. Vanilla answered every one of them, so
+     * this plugin's version was never reached - messages worked on one server,
+     * looked wrong, and could not cross to another.
+     *
+     * <p>This event runs before dispatch, so cancelling here is what actually
+     * takes the command.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCommandPreprocess(PlayerCommandPreprocessEvent event) {
+        String[] parts = event.getMessage().split("\\s+", 3);
+        String label = parts[0].toLowerCase(java.util.Locale.ROOT);
+        if (!label.equals("/msg") && !label.equals("/w") && !label.equals("/tell")
+                && !label.equals("/whisper")) {
+            return;
+        }
+
+        event.setCancelled(true);
+        if (parts.length < 3 || parts[2].isBlank()) {
+            event.getPlayer().sendMessage(ChatColor.GRAY + "Usage: /msg <username> <message>");
+            return;
+        }
+        sendPrivateMessage(event.getPlayer(), parts[1], parts[2]);
     }
 
     // --------------------------------------------------------------- commands
