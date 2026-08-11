@@ -104,7 +104,45 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true);
+        this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, isModded(player));
+
+        // The client sends its brand on its own schedule, and it has usually not
+        // arrived by the time this event fires - so the record above says "unknown",
+        // which is read as modded. Written again once it has landed, otherwise a
+        // vanilla player is permanently mistaken for a modded one and shown servers
+        // they cannot reach.
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (player.isOnline()) {
+                this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, isModded(player));
+            }
+        }, 60L);
+    }
+
+    /**
+     * Whether this client loads mods, from the brand it reports.
+     *
+     * <p>A vanilla client cannot join a server with content mods - negotiation
+     * refuses it - so the proxy needs to know before sending anyone there, and
+     * only a backend can see this.
+     *
+     * <p>Unknown counts as modded. Detection failing should not lock a player out
+     * of servers they can actually use; the worst case in this direction is that
+     * they try one and are refused by the server itself, which is what happened
+     * before any of this existed.
+     */
+    private boolean isModded(Player player) {
+        try {
+            String brand = player.getClientBrandName();
+            getLogger().fine(() -> "Client brand for " + player.getName() + ": " + brand);
+            if (brand == null || brand.isBlank()) {
+                return true;
+            }
+            return !brand.equalsIgnoreCase("vanilla");
+        } catch (Throwable unsupported) {
+            // getClientBrandName is Paper API and may not be implemented here.
+            getLogger().fine("Client brand unavailable, assuming modded: " + unsupported);
+            return true;
+        }
     }
 
     @EventHandler
@@ -112,7 +150,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         Player player = event.getPlayer();
         // Recorded as offline on this server. If they are switching servers the
         // other side overwrites this a moment later, which is the correct order.
-        this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, false);
+        this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, false, isModded(player));
     }
 
     // --------------------------------------------------------- friendly fire

@@ -52,8 +52,14 @@ public final class FriendStore {
     public record Friendship(UUID uuid, String name, long since, boolean friendlyFire) {
     }
 
-    /** Where someone is, and when they were last seen. */
-    public record Presence(String name, String server, long lastOnline, boolean online) {
+    /**
+     * Where someone is, when they were last seen, and what client they use.
+     *
+     * @param modded whether their client loads mods. A vanilla client cannot join a
+     *               server with content mods at all - the connection is refused
+     *               during negotiation - so the proxy needs to know before it tries.
+     */
+    public record Presence(String name, String server, long lastOnline, boolean online, boolean modded) {
     }
 
     // ---------------------------------------------------------------- friends
@@ -260,13 +266,14 @@ public final class FriendStore {
     // --------------------------------------------------------------- presence
 
     /** Records where someone is, so other servers can find and reach them. */
-    public void setPresence(UUID player, String name, String server, boolean online) {
+    public void setPresence(UUID player, String name, String server, boolean online, boolean modded) {
         modify(this.presenceFile, root -> {
             JsonObject entry = new JsonObject();
             entry.addProperty("name", name);
             entry.addProperty("server", server);
             entry.addProperty("lastOnline", System.currentTimeMillis());
             entry.addProperty("online", online);
+            entry.addProperty("modded", modded);
             root.add(player.toString(), entry);
         });
     }
@@ -276,11 +283,24 @@ public final class FriendStore {
         if (entry == null) {
             return null;
         }
+        return toPresence(entry);
+    }
+
+    /**
+     * Reads one presence record.
+     *
+     * <p>{@code modded} defaults to true when absent, so a record written before
+     * this field existed is treated as a modded client. Guessing wrong in that
+     * direction lets someone try a server and be refused by it; the other
+     * direction would lock a modded player out of servers they can use.
+     */
+    private static Presence toPresence(JsonObject entry) {
         return new Presence(
                 entry.get("name").getAsString(),
                 entry.get("server").getAsString(),
                 entry.get("lastOnline").getAsLong(),
-                entry.get("online").getAsBoolean());
+                entry.get("online").getAsBoolean(),
+                !entry.has("modded") || entry.get("modded").getAsBoolean());
     }
 
     /** Finds someone by name, for commands where a player types a username. */
@@ -289,11 +309,7 @@ public final class FriendStore {
         for (String key : root.keySet()) {
             JsonObject entry = root.getAsJsonObject(key);
             if (entry.get("name").getAsString().equalsIgnoreCase(name)) {
-                return Map.entry(UUID.fromString(key), new Presence(
-                        entry.get("name").getAsString(),
-                        entry.get("server").getAsString(),
-                        entry.get("lastOnline").getAsLong(),
-                        entry.get("online").getAsBoolean()));
+                return Map.entry(UUID.fromString(key), toPresence(entry));
             }
         }
         return null;
