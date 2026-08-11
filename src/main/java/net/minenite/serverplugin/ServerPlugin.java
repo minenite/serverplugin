@@ -166,6 +166,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // everyone else and a join message is one broadcast for the whole server.
         // Sent per player below instead.
         event.setJoinMessage(null);
+
+        // Read fresh rather than trusting the cache. Ranks are refreshed on a
+        // timer, and somebody who turns silent join on and immediately switches
+        // server would arrive before this one had noticed - announcing exactly the
+        // arrival they had just asked to hide.
+        this.ranks.reload();
         boolean silent = this.ranks.isSilent(player.getUniqueId());
         if (!silent) {
             announceLocally(player);
@@ -375,6 +381,8 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        // Same reason as the arrival: the toggle may have happened elsewhere.
+        this.ranks.reload();
         event.setQuitMessage(this.ranks.isSilent(player.getUniqueId())
                 ? null
                 : announcement(this.quitMessage, player.getName()));
