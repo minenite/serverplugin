@@ -113,7 +113,13 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // they cannot reach.
         getServer().getScheduler().runTaskLater(this, () -> {
             if (player.isOnline()) {
-                this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, isModded(player));
+                boolean modded = isModded(player);
+                // Logged because this decides which servers they are shown and
+                // allowed to reach; when it is wrong there is otherwise nothing to
+                // look at.
+                getLogger().info("Client brand for " + player.getName() + ": "
+                        + player.getClientBrandName() + " -> " + (modded ? "modded" : "vanilla"));
+                this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, modded);
             }
         }, 60L);
     }
