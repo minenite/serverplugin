@@ -110,11 +110,11 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.requestDeclinedMessage = getConfig().getString(
                 "friend-request-declined", "&e%player% &cdeclined &e&oyour friend request :'(");
         this.messageFormat = getConfig().getString(
-                "message-format", "&7%sender%&8\u203a&7%target%&8: &7&o%message%");
+                "message-format", "&7%sender% &8\u203a &7%target%&8: &7&o%message%");
         this.messageCrossServerFormat = getConfig().getString(
-                "message-cross-server-format", "&7%sender%&8\u203a&7%target%&7&o@%server%&8: &7&o%message%");
+                "message-cross-server-format", "&7%sender% &8\u203a &7%target% &7&o@ %server%&8: &7&o%message%");
         this.messageSentFormat = getConfig().getString(
-                "message-sent-format", "&7%sender%&8\u203a&7%target%&8: &7&o%message%");
+                "message-sent-format", "&7%sender% &8\u203a &7%target%&8: &7&o%message%");
 
         this.travelDirectory = shared.resolve("travel");
         try {

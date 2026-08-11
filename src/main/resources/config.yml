@@ -48,6 +48,6 @@ friend-request-declined: "&e%player% &cdeclined &e&oyour friend request :'("
 # %sender% is who wrote it, %target% who it is for, %message% the text, and
 # %server% the sender's server - that being the part the recipient cannot see for
 # themselves.
-message-format: "&7%sender%&8›&7%target%&8: &7&o%message%"
-message-cross-server-format: "&7%sender%&8›&7%target%&7&o@%server%&8: &7&o%message%"
-message-sent-format: "&7%sender%&8›&7%target%&8: &7&o%message%"
+message-format: "&7%sender% &8› &7%target%&8: &7&o%message%"
+message-cross-server-format: "&7%sender% &8› &7%target% &7&o@ %server%&8: &7&o%message%"
+message-sent-format: "&7%sender% &8› &7%target%&8: &7&o%message%"
