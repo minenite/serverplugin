@@ -39,3 +39,13 @@ friend-join-elsewhere-message: "&a+ &2%player% &b[&3%server%&b]"
 # hearing about now, not on their next login a week later.
 friend-request-received: "&e%player% &e&osent you a friend request!"
 friend-request-declined: "&e%player% &cdeclined &e&oyour friend request :'("
+
+# Private messages, which reach a player on any server.
+#
+# The sender's server is named only when it differs from the recipient's: telling
+# someone the server they are already standing on says nothing.
+#
+# %player% is the other person, %message% the text, %server% the sender's server.
+message-format: "&7%player% &7says: &7&o%message%"
+message-cross-server-format: "&7%player%&8&o@%server% &7says: &7&o%message%"
+message-sent-format: "&7to &7%player% &7says: &7&o%message%"

@@ -72,6 +72,9 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     private String friendJoinElsewhereMessage;
     private String requestReceivedMessage;
     private String requestDeclinedMessage;
+    private String messageFormat;
+    private String messageCrossServerFormat;
+    private String messageSentFormat;
 
     /** Arrivals already shown, so a poll does not repeat what it saw last time. */
     private long lastArrivalSeen = System.currentTimeMillis();
@@ -105,6 +108,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 "friend-request-received", "&e%player% &e&osent you a friend request!");
         this.requestDeclinedMessage = getConfig().getString(
                 "friend-request-declined", "&e%player% &cdeclined &e&oyour friend request :'(");
+        this.messageFormat = getConfig().getString(
+                "message-format", "&7%player% &7says: &7&o%message%");
+        this.messageCrossServerFormat = getConfig().getString(
+                "message-cross-server-format", "&7%player%&8&o@%server% &7says: &7&o%message%");
+        this.messageSentFormat = getConfig().getString(
+                "message-sent-format", "&7to &7%player% &7says: &7&o%message%");
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -164,6 +173,42 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, modded);
             }
         }, 60L);
+    }
+
+    /**
+     * Carries a private message to someone on any server.
+     *
+     * <p>The sender's server is named only when it differs from the recipient's -
+     * telling someone the server they are already standing on says nothing.
+     */
+    private void sendPrivateMessage(Player from, String targetName, String body) {
+        Map.Entry<UUID, FriendStore.Presence> seen = this.store.presenceByName(targetName);
+        if (seen == null) {
+            from.sendMessage(ChatColor.RED + "No player called " + targetName + " has been seen on this network.");
+            return;
+        }
+        FriendStore.Presence presence = seen.getValue();
+        if (!presence.online()) {
+            from.sendMessage(ChatColor.RED + presence.name() + " is not online.");
+            return;
+        }
+        if (seen.getKey().equals(from.getUniqueId())) {
+            from.sendMessage(ChatColor.RED + "Talking to yourself is a bad sign.");
+            return;
+        }
+
+        boolean sameServer = presence.server().equals(this.serverName);
+        String template = sameServer ? this.messageFormat : this.messageCrossServerFormat;
+        String line = org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                template.replace("%player%", from.getName())
+                        .replace("%server%", this.serverName)
+                        .replace("%message%", body));
+
+        tell(seen.getKey(), line);
+        from.sendMessage(org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                this.messageSentFormat.replace("%player%", presence.name())
+                        .replace("%server%", presence.server())
+                        .replace("%message%", body)));
     }
 
     /**
@@ -363,6 +408,15 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Only a player can use this.");
+            return true;
+        }
+
+        if (command.getName().equalsIgnoreCase("msg")) {
+            if (args.length < 2) {
+                player.sendMessage(ChatColor.GRAY + "Usage: /msg <username> <message>");
+                return true;
+            }
+            sendPrivateMessage(player, args[0], String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)));
             return true;
         }
 

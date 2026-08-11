@@ -10,6 +10,10 @@ commands:
     description: Core plugin for the network - friends, friendly fire and cross-server travel.
     usage: /friend [username]
     aliases: [friends]
+  msg:
+    description: Send a private message to a player on any server.
+    usage: /msg <username> <message>
+    aliases: [w, tell, whisper]
   join:
     description: Core plugin for the network - friends, friendly fire and cross-server travel.
     usage: /join <username>
