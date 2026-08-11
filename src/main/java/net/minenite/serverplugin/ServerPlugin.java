@@ -20,6 +20,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -52,6 +53,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     private static final String PROXY_CHANNEL = "bungeecord:main";
 
     private FriendStore store;
+    private RankStore ranks;
     private FriendsMenu menu;
     private String serverName;
     private Path travelDirectory;
@@ -97,6 +99,14 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             return;
         }
 
+        try {
+            this.ranks = new RankStore(shared);
+        } catch (IOException failed) {
+            getLogger().severe("Could not open the shared ranks file: " + failed.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         this.menu = new FriendsMenu(this.store, getConfig().getBoolean("friendly-fire-protection", true));
         this.serverName = getConfig().getString("server-name", getServer().getName());
         this.protectFriends = getConfig().getBoolean("friendly-fire-protection", true);
@@ -132,6 +142,13 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         getServer().getScheduler().runTaskTimerAsynchronously(this, this::deliverFriendArrivals, 40L, 20L);
         getServer().getScheduler().runTaskTimerAsynchronously(this, this::deliverNotices, 40L, 20L);
 
+        // Ranks are set on whichever server the command was typed on, so the others
+        // have to notice. Cheap: one small file, read every few seconds.
+        getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
+            this.ranks.reload();
+            getServer().getScheduler().runTask(this, this::refreshTabList);
+        }, 100L, 100L);
+
         getLogger().info("Friends loaded, sharing data at " + shared
                 + (this.protectFriends ? "" : " (friends can hurt each other on this server)"));
     }
@@ -150,6 +167,8 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // Sent per player below instead.
         event.setJoinMessage(null);
         announceLocally(player);
+        player.setPlayerListName(
+                this.ranks.displayedRankOf(player.getUniqueId()).colouredName(player.getName()));
 
         try {
             this.store.announceArrival(player.getUniqueId(), player.getName(), this.serverName);
@@ -437,6 +456,124 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             return;
         }
         sendPrivateMessage(event.getPlayer(), parts[1], parts[2]);
+    }
+
+    /**
+     * Takes the rank commands before vanilla can.
+     *
+     * <p>/tag is a vanilla command - it manages entity tags - so it would never
+     * reach a plugin otherwise, the same way /msg did not.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onRankCommand(PlayerCommandPreprocessEvent event) {
+        String[] parts = event.getMessage().split("\\s+");
+        String label = parts[0].toLowerCase(java.util.Locale.ROOT);
+
+        if (label.equals("/setrank")) {
+            event.setCancelled(true);
+            if (parts.length < 3) {
+                event.getPlayer().sendMessage(ChatColor.GRAY + "Usage: /setrank <username> <rank>");
+                return;
+            }
+            setRank(event.getPlayer(), parts[1], parts[2]);
+            return;
+        }
+
+        if (label.equals("/tag")) {
+            event.setCancelled(true);
+            if (parts.length < 2) {
+                event.getPlayer().sendMessage(ChatColor.GRAY + "Usage: /tag <rank>");
+                return;
+            }
+            setTag(event.getPlayer(), parts[1]);
+        }
+    }
+
+    // ------------------------------------------------------------------ ranks
+
+    /**
+     * Puts the rank in front of the name in chat.
+     *
+     * <p>The displayed rank, not necessarily the held one - somebody may be
+     * showing a lower one on purpose.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onChat(AsyncPlayerChatEvent event) {
+        Rank rank = this.ranks.displayedRankOf(event.getPlayer().getUniqueId());
+        // %2$s is the message; the format is applied per recipient by Bukkit, so
+        // the message itself must stay a placeholder rather than be pasted in.
+        event.setFormat(rank.prefixedName(event.getPlayer().getName())
+                + ChatColor.translateAlternateColorCodes('&', "&7\u00bb &7") + "%2$s");
+    }
+
+    /** Colours everyone's name in the tab list by the rank they are showing. */
+    private void refreshTabList() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            player.setPlayerListName(
+                    this.ranks.displayedRankOf(player.getUniqueId()).colouredName(player.getName()));
+        }
+    }
+
+    /** Whether someone may hand out ranks: SMOD and above, or an operator. */
+    private boolean maySetRanks(Player player) {
+        return player.isOp() || this.ranks.rankOf(player.getUniqueId()).atLeast(Rank.SMOD);
+    }
+
+    private void setRank(Player actor, String targetName, String rankName) {
+        if (!maySetRanks(actor)) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to set ranks.");
+            return;
+        }
+        Rank rank = Rank.parse(rankName);
+        if (rank == null) {
+            actor.sendMessage(ChatColor.RED + "No such rank. Try: " + ChatColor.GRAY + Rank.listNames());
+            return;
+        }
+        Map.Entry<UUID, FriendStore.Presence> seen = this.store.presenceByName(targetName);
+        if (seen == null) {
+            actor.sendMessage(ChatColor.RED + "No player called " + targetName + " has been seen on this network.");
+            return;
+        }
+        try {
+            this.ranks.setRank(seen.getKey(), rank);
+        } catch (IOException failed) {
+            actor.sendMessage(ChatColor.RED + "Could not save that rank.");
+            getLogger().warning("Could not save ranks: " + failed.getMessage());
+            return;
+        }
+        refreshTabList();
+        actor.sendMessage(ChatColor.GRAY + seen.getValue().name() + " is now "
+                + rank.prefixedName(seen.getValue().name()) + ChatColor.GRAY + ".");
+        tell(seen.getKey(), ChatColor.GRAY + "Your rank is now "
+                + rank.prefixedName(seen.getValue().name()) + ChatColor.GRAY + ".");
+    }
+
+    /**
+     * Shows a rank at or below the one somebody actually holds.
+     *
+     * <p>Downwards only: a tag is for an admin who wants to play without the
+     * badge, not a way to claim authority.
+     */
+    private void setTag(Player actor, String rankName) {
+        Rank real = this.ranks.rankOf(actor.getUniqueId());
+        Rank wanted = Rank.parse(rankName);
+        if (wanted == null) {
+            actor.sendMessage(ChatColor.RED + "No such rank. Try: " + ChatColor.GRAY + Rank.listNames());
+            return;
+        }
+        if (!real.atLeast(wanted)) {
+            actor.sendMessage(ChatColor.RED + "You can only show a rank at or below your own.");
+            return;
+        }
+        try {
+            this.ranks.setTag(actor.getUniqueId(), wanted);
+        } catch (IOException failed) {
+            actor.sendMessage(ChatColor.RED + "Could not save that.");
+            return;
+        }
+        refreshTabList();
+        actor.sendMessage(ChatColor.GRAY + "Now showing as "
+                + wanted.prefixedName(actor.getName()) + ChatColor.GRAY + ".");
     }
 
     // --------------------------------------------------------------- commands

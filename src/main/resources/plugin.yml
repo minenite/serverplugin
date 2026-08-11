@@ -14,6 +14,12 @@ commands:
     description: Send a private message to a player on any server.
     usage: /msg <username> <message>
     aliases: [w, tell, whisper]
+  setrank:
+    description: Set a player's rank across the network. SMOD and above, or operators.
+    usage: /setrank <username> <rank>
+  tag:
+    description: Display a rank at or below your own.
+    usage: /tag <rank>
   join:
     description: Core plugin for the network - friends, friendly fire and cross-server travel.
     usage: /join <username>
