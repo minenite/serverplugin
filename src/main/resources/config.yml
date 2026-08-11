@@ -27,3 +27,9 @@ friendly-fire-protection: true
 # what players actually see.
 join-message: "&a+ &7%player%"
 quit-message: "&4- &7%player%"
+
+# Shown to a player's friends when they arrive. The first replaces the ordinary
+# join line for friends on the same server; the second reaches friends elsewhere
+# on the network, and understands %server%.
+friend-join-message: "&a+ &2%player%"
+friend-join-elsewhere-message: "&a+ &2%player% &b[&3%server%&b]"

@@ -325,6 +325,76 @@ public final class FriendStore {
         return players;
     }
 
+    // ---------------------------------------------------------- announcements
+
+    /** Somebody arriving somewhere, for their friends elsewhere to hear about. */
+    public record Arrival(UUID uuid, String name, String server, long at) {
+    }
+
+    /**
+     * Announces an arrival to the rest of the network.
+     *
+     * <p>One file per arrival rather than a shared list: every server reads these
+     * and none of them can delete one without hiding it from the others, so they
+     * are left to expire instead. A file is the whole record, so a reader never
+     * sees half of one.
+     */
+    public void announceArrival(UUID player, String name, String server) throws IOException {
+        Path directory = this.friendsFile.getParent().resolve("arrivals");
+        Files.createDirectories(directory);
+        long now = System.currentTimeMillis();
+        String body = name + "\n" + server + "\n" + now;
+        Path staged = directory.resolve(player + "-" + now + ".staging");
+        Files.writeString(staged, body, StandardCharsets.UTF_8);
+        Files.move(staged, directory.resolve(player + "-" + now + ".arrival"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /**
+     * Arrivals newer than {@code since}, and tidying of ones long past.
+     *
+     * <p>Anything older than a minute is deleted by whichever server notices it
+     * first: every server has long since read it, and nobody wants an announcement
+     * from ten minutes ago.
+     */
+    public List<Arrival> arrivalsSince(long since) {
+        Path directory = this.friendsFile.getParent().resolve("arrivals");
+        List<Arrival> arrivals = new ArrayList<>();
+        if (!Files.isDirectory(directory)) {
+            return arrivals;
+        }
+        long expiry = System.currentTimeMillis() - 60_000L;
+        try (java.nio.file.DirectoryStream<Path> files =
+                     Files.newDirectoryStream(directory, "*.arrival")) {
+            for (Path file : files) {
+                try {
+                    List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+                    if (lines.size() < 3) {
+                        continue;
+                    }
+                    long at = Long.parseLong(lines.get(2).trim());
+                    if (at < expiry) {
+                        Files.deleteIfExists(file);
+                        continue;
+                    }
+                    if (at <= since) {
+                        continue;
+                    }
+                    String id = file.getFileName().toString();
+                    id = id.substring(0, id.lastIndexOf('-'));
+                    arrivals.add(new Arrival(UUID.fromString(id), lines.get(0), lines.get(1), at));
+                } catch (Exception malformed) {
+                    // One unreadable file must not stop the rest being seen.
+                }
+            }
+        } catch (IOException unreadable) {
+            return arrivals;
+        }
+        arrivals.sort(java.util.Comparator.comparingLong(Arrival::at));
+        return arrivals;
+    }
+
     // ------------------------------------------------------------------- i/o
 
     private JsonObject read(Path file) {

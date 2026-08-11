@@ -68,6 +68,11 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     /** Announcements shown when someone arrives or leaves, with & colour codes. */
     private String joinMessage;
     private String quitMessage;
+    private String friendJoinMessage;
+    private String friendJoinElsewhereMessage;
+
+    /** Arrivals already shown, so a poll does not repeat what it saw last time. */
+    private long lastArrivalSeen = System.currentTimeMillis();
 
     @Override
     public void onEnable() {
@@ -91,6 +96,9 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.protectFriends = getConfig().getBoolean("friendly-fire-protection", true);
         this.joinMessage = getConfig().getString("join-message", "&a+ &7%player%");
         this.quitMessage = getConfig().getString("quit-message", "&4- &7%player%");
+        this.friendJoinMessage = getConfig().getString("friend-join-message", "&a+ &2%player%");
+        this.friendJoinElsewhereMessage = getConfig().getString(
+                "friend-join-elsewhere-message", "&a+ &2%player% &b[&3%server%&b]");
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -101,6 +109,11 @@ public class ServerPlugin extends JavaPlugin implements Listener {
 
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getMessenger().registerOutgoingPluginChannel(this, PROXY_CHANNEL);
+
+        // Arrivals on other servers, for friends here to hear about. Polled off the
+        // main thread because it reads the disk; the messages themselves are sent
+        // back on it.
+        getServer().getScheduler().runTaskTimerAsynchronously(this, this::deliverFriendArrivals, 40L, 20L);
 
         getLogger().info("Friends loaded, sharing data at " + shared
                 + (this.protectFriends ? "" : " (friends can hurt each other on this server)"));
@@ -114,7 +127,18 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        event.setJoinMessage(announcement(this.joinMessage, player.getName()));
+
+        // Suppressed, because a friend is meant to see something different from
+        // everyone else and a join message is one broadcast for the whole server.
+        // Sent per player below instead.
+        event.setJoinMessage(null);
+        announceLocally(player);
+
+        try {
+            this.store.announceArrival(player.getUniqueId(), player.getName(), this.serverName);
+        } catch (IOException failed) {
+            getLogger().warning("Could not announce " + player.getName() + " to the network: " + failed.getMessage());
+        }
         this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, isModded(player));
 
         // The client sends its brand on its own schedule, and it has usually not
@@ -133,6 +157,58 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, modded);
             }
         }, 60L);
+    }
+
+    /** Tells this server who arrived, in green for their friends and grey for the rest. */
+    private void announceLocally(Player joined) {
+        java.util.Set<UUID> friends = this.store.friendsOf(joined.getUniqueId()).stream()
+                .map(FriendStore.Friendship::uuid)
+                .collect(java.util.stream.Collectors.toSet());
+
+        for (Player viewer : getServer().getOnlinePlayers()) {
+            String template = friends.contains(viewer.getUniqueId()) ? this.friendJoinMessage : this.joinMessage;
+            String line = announcement(template, joined.getName());
+            if (line != null) {
+                viewer.sendMessage(line);
+            }
+        }
+    }
+
+    /**
+     * Tells players here when one of their friends turns up on another server.
+     *
+     * <p>Nothing in Bukkit reaches across servers, so the arrival is left in the
+     * shared directory by whichever server saw it and picked up here. The server
+     * they arrived on is skipped: those players were told directly.
+     */
+    private void deliverFriendArrivals() {
+        List<FriendStore.Arrival> arrivals = this.store.arrivalsSince(this.lastArrivalSeen);
+        if (arrivals.isEmpty()) {
+            return;
+        }
+        this.lastArrivalSeen = arrivals.get(arrivals.size() - 1).at();
+
+        for (FriendStore.Arrival arrival : arrivals) {
+            if (arrival.server().equals(this.serverName)) {
+                continue;
+            }
+            java.util.Set<UUID> friends = this.store.friendsOf(arrival.uuid()).stream()
+                    .map(FriendStore.Friendship::uuid)
+                    .collect(java.util.stream.Collectors.toSet());
+            if (friends.isEmpty()) {
+                continue;
+            }
+            String line = announcement(this.friendJoinElsewhereMessage, arrival.name())
+                    .replace("%server%", arrival.server());
+            // Back to the main thread: this ran off it to read the disk.
+            getServer().getScheduler().runTask(this, () -> {
+                for (Player viewer : getServer().getOnlinePlayers()) {
+                    if (friends.contains(viewer.getUniqueId())) {
+                        viewer.sendMessage(line);
+                    }
+                }
+            });
+        }
     }
 
     /**
