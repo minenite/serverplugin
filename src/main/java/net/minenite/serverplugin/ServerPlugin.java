@@ -110,11 +110,11 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.requestDeclinedMessage = getConfig().getString(
                 "friend-request-declined", "&e%player% &cdeclined &e&oyour friend request :'(");
         this.messageFormat = getConfig().getString(
-                "message-format", "&7%player% &7says: &7&o%message%");
+                "message-format", "&7%sender%&8\u203a&7%target%&8: &7&o%message%");
         this.messageCrossServerFormat = getConfig().getString(
-                "message-cross-server-format", "&7%player%&8&o@%server% &7says: &7&o%message%");
+                "message-cross-server-format", "&7%sender%&8\u203a&7%target%&7&o@%server%&8: &7&o%message%");
         this.messageSentFormat = getConfig().getString(
-                "message-sent-format", "&7to &7%player% &7says: &7&o%message%");
+                "message-sent-format", "&7%sender%&8\u203a&7%target%&8: &7&o%message%");
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -176,6 +176,15 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         }, 60L);
     }
 
+    /** Fills a message template. */
+    private String format(String template, String sender, String target, String server, String body) {
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                template.replace("%sender%", sender)
+                        .replace("%target%", target)
+                        .replace("%server%", server)
+                        .replace("%message%", body));
+    }
+
     /**
      * Carries a private message to someone on any server.
      *
@@ -199,17 +208,15 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         }
 
         boolean sameServer = presence.server().equals(this.serverName);
-        String template = sameServer ? this.messageFormat : this.messageCrossServerFormat;
-        String line = org.bukkit.ChatColor.translateAlternateColorCodes('&',
-                template.replace("%player%", from.getName())
-                        .replace("%server%", this.serverName)
-                        .replace("%message%", body));
 
-        tell(seen.getKey(), line);
-        from.sendMessage(org.bukkit.ChatColor.translateAlternateColorCodes('&',
-                this.messageSentFormat.replace("%player%", presence.name())
-                        .replace("%server%", presence.server())
-                        .replace("%message%", body)));
+        // %server% is the sender's, because that is the part the recipient cannot
+        // see for themselves. Only shown when the two differ.
+        String received = format(sameServer ? this.messageFormat : this.messageCrossServerFormat,
+                from.getName(), presence.name(), this.serverName, body);
+        tell(seen.getKey(), received);
+
+        from.sendMessage(format(this.messageSentFormat,
+                from.getName(), presence.name(), presence.server(), body));
     }
 
     /**

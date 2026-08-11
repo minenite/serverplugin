@@ -45,7 +45,9 @@ friend-request-declined: "&e%player% &cdeclined &e&oyour friend request :'("
 # The sender's server is named only when it differs from the recipient's: telling
 # someone the server they are already standing on says nothing.
 #
-# %player% is the other person, %message% the text, %server% the sender's server.
-message-format: "&7%player% &7says: &7&o%message%"
-message-cross-server-format: "&7%player%&8&o@%server% &7says: &7&o%message%"
-message-sent-format: "&7to &7%player% &7says: &7&o%message%"
+# %sender% is who wrote it, %target% who it is for, %message% the text, and
+# %server% the sender's server - that being the part the recipient cannot see for
+# themselves.
+message-format: "&7%sender%&8›&7%target%&8: &7&o%message%"
+message-cross-server-format: "&7%sender%&8›&7%target%&7&o@%server%&8: &7&o%message%"
+message-sent-format: "&7%sender%&8›&7%target%&8: &7&o%message%"
