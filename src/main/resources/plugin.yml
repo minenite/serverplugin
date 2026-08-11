@@ -17,6 +17,9 @@ commands:
   setrank:
     description: Set a player's rank across the network. SMOD and above, or operators.
     usage: /setrank <username> <rank>
+  silentjoin:
+    description: Toggle arriving and leaving unannounced. TMOD and above.
+    usage: /silentjoin
   tag:
     description: Display a rank at or below your own.
     usage: /tag <rank>

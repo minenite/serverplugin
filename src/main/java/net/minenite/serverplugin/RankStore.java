@@ -37,6 +37,10 @@ public final class RankStore {
     private final Map<UUID, Rank> ranks = new ConcurrentHashMap<>();
     private final Map<UUID, Rank> tags = new ConcurrentHashMap<>();
 
+    /** Players arriving and leaving without announcement. */
+    private final java.util.Set<UUID> silent =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public RankStore(Path sharedDirectory) throws IOException {
         Files.createDirectories(sharedDirectory);
         this.file = sharedDirectory.resolve("ranks.json");
@@ -48,13 +52,37 @@ public final class RankStore {
         return this.ranks.getOrDefault(player, Rank.DEFAULT);
     }
 
+    /** Whether this player comes and goes unannounced. */
+    public boolean isSilent(UUID player) {
+        return this.silent.contains(player);
+    }
+
+    /** @return the state after toggling */
+    public boolean toggleSilent(UUID player) throws IOException {
+        boolean now;
+        if (this.silent.contains(player)) {
+            this.silent.remove(player);
+            now = false;
+        } else {
+            this.silent.add(player);
+            now = true;
+        }
+        save();
+        return now;
+    }
+
     /**
      * The rank someone is displaying, which may be lower than the one they hold.
      *
-     * <p>Falls back to the real rank, and never exceeds it: a tag set before a
+     * <p>Falls back to the real rank and never exceeds it: a tag set before a
      * demotion must not keep showing the old one.
      */
     public Rank displayedRankOf(UUID player) {
+        // Coming and going unnoticed while wearing a staff rank would rather
+        // defeat the point of it.
+        if (this.silent.contains(player)) {
+            return Rank.DEFAULT;
+        }
         Rank real = rankOf(player);
         Rank tag = this.tags.get(player);
         if (tag == null || real.atLeast(tag)) {
@@ -93,6 +121,7 @@ public final class RankStore {
             JsonObject root = JsonParser.parseString(text).getAsJsonObject();
             this.ranks.clear();
             this.tags.clear();
+            this.silent.clear();
             for (String key : root.keySet()) {
                 JsonObject entry = root.getAsJsonObject(key);
                 UUID id = UUID.fromString(key);
@@ -104,6 +133,9 @@ public final class RankStore {
                 if (tag != null) {
                     this.tags.put(id, tag);
                 }
+                if (entry.has("silent") && entry.get("silent").getAsBoolean()) {
+                    this.silent.add(id);
+                }
             }
         } catch (Exception unreadable) {
             // Keep what is already in memory: an unreadable file must not silently
@@ -113,14 +145,20 @@ public final class RankStore {
 
     private synchronized void save() throws IOException {
         JsonObject root = new JsonObject();
-        for (Map.Entry<UUID, Rank> entry : this.ranks.entrySet()) {
+        java.util.Set<UUID> everyone = new java.util.LinkedHashSet<>(this.ranks.keySet());
+        everyone.addAll(this.silent);
+        everyone.addAll(this.tags.keySet());
+        for (UUID id : everyone) {
             JsonObject record = new JsonObject();
-            record.addProperty("rank", entry.getKey() == null ? "DEFAULT" : entry.getValue().name());
-            Rank tag = this.tags.get(entry.getKey());
+            record.addProperty("rank", this.ranks.getOrDefault(id, Rank.DEFAULT).name());
+            Rank tag = this.tags.get(id);
             if (tag != null) {
                 record.addProperty("tag", tag.name());
             }
-            root.add(entry.getKey().toString(), record);
+            if (this.silent.contains(id)) {
+                record.addProperty("silent", true);
+            }
+            root.add(id.toString(), record);
         }
         Path staged = this.file.resolveSibling("ranks.json.staging");
         Files.writeString(staged, GSON.toJson(root), StandardCharsets.UTF_8);

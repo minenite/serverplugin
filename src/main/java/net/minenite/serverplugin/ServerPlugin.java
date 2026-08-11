@@ -166,12 +166,17 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // everyone else and a join message is one broadcast for the whole server.
         // Sent per player below instead.
         event.setJoinMessage(null);
-        announceLocally(player);
+        boolean silent = this.ranks.isSilent(player.getUniqueId());
+        if (!silent) {
+            announceLocally(player);
+        }
         player.setPlayerListName(
                 this.ranks.displayedRankOf(player.getUniqueId()).colouredName(player.getName()));
 
         try {
-            this.store.announceArrival(player.getUniqueId(), player.getName(), this.serverName);
+            if (!silent) {
+                this.store.announceArrival(player.getUniqueId(), player.getName(), this.serverName);
+            }
         } catch (IOException failed) {
             getLogger().warning("Could not announce " + player.getName() + " to the network: " + failed.getMessage());
         }
@@ -370,7 +375,9 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        event.setQuitMessage(announcement(this.quitMessage, player.getName()));
+        event.setQuitMessage(this.ranks.isSilent(player.getUniqueId())
+                ? null
+                : announcement(this.quitMessage, player.getName()));
         // Recorded as offline on this server. If they are switching servers the
         // other side overwrites this a moment later, which is the correct order.
         this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, false, isModded(player));
@@ -479,6 +486,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             return;
         }
 
+        if (label.equals("/silentjoin")) {
+            event.setCancelled(true);
+            toggleSilentJoin(event.getPlayer());
+            return;
+        }
+
         if (label.equals("/tag")) {
             event.setCancelled(true);
             if (parts.length < 2) {
@@ -574,6 +587,32 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         refreshTabList();
         actor.sendMessage(ChatColor.GRAY + "Now showing as "
                 + wanted.prefixedName(actor.getName()) + ChatColor.GRAY + ".");
+    }
+
+    /**
+     * Turns announcements off for one player, everywhere.
+     *
+     * <p>TMOD and above, since arriving unseen is a staff convenience rather than
+     * something to hand to everybody. While it is on they also show as unranked -
+     * coming and going unnoticed while wearing a staff badge would defeat the
+     * point.
+     */
+    private void toggleSilentJoin(Player player) {
+        if (!player.isOp() && !this.ranks.rankOf(player.getUniqueId()).atLeast(Rank.TMOD)) {
+            player.sendMessage(ChatColor.RED + "You are not allowed to do that.");
+            return;
+        }
+        try {
+            boolean silent = this.ranks.toggleSilent(player.getUniqueId());
+            refreshTabList();
+            player.sendMessage(silent
+                    ? ChatColor.GRAY + "Silent join is " + ChatColor.GREEN + "on"
+                            + ChatColor.GRAY + " - you arrive and leave unannounced, and show as unranked."
+                    : ChatColor.GRAY + "Silent join is " + ChatColor.RED + "off" + ChatColor.GRAY + ".");
+        } catch (IOException failed) {
+            player.sendMessage(ChatColor.RED + "Could not save that.");
+            getLogger().warning("Could not save ranks: " + failed.getMessage());
+        }
     }
 
     // --------------------------------------------------------------- commands
