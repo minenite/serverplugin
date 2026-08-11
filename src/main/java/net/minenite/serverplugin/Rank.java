@@ -25,9 +25,9 @@ public enum Rank {
     MOD("MOD", "&f", "&5"),
     TMOD("TMOD", "&f", "&d"),
     BUILDER("BUILDER", "&f", "&3"),
-    ELITE("ELITE", "&a", "&f"),
-    MVP("MVP", "&b", "&f"),
-    VIP("VIP", "&a", "&f"),
+    ELITE("ELITE", "&2", "&7"),
+    MVP("MVP", "&b", "&7"),
+    VIP("VIP", "&a", "&7"),
 
     /** No rank: no label, and a name like anybody else's. */
     DEFAULT("", "", "&7");

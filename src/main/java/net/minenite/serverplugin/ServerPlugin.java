@@ -503,7 +503,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // %2$s is the message; the format is applied per recipient by Bukkit, so
         // the message itself must stay a placeholder rather than be pasted in.
         event.setFormat(rank.prefixedName(event.getPlayer().getName())
-                + ChatColor.translateAlternateColorCodes('&', "&7\u00bb &7") + "%2$s");
+                + ChatColor.translateAlternateColorCodes('&', " &7\u00bb &7") + "%2$s");
     }
 
     /** Colours everyone's name in the tab list by the rank they are showing. */
