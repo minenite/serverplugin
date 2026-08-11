@@ -16,6 +16,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -64,6 +65,10 @@ public class ServerPlugin extends JavaPlugin implements Listener {
      */
     private boolean protectFriends;
 
+    /** Announcements shown when someone arrives or leaves, with & colour codes. */
+    private String joinMessage;
+    private String quitMessage;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
@@ -84,6 +89,8 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.menu = new FriendsMenu(this.store, getConfig().getBoolean("friendly-fire-protection", true));
         this.serverName = getConfig().getString("server-name", getServer().getName());
         this.protectFriends = getConfig().getBoolean("friendly-fire-protection", true);
+        this.joinMessage = getConfig().getString("join-message", "&a+ &7%player%");
+        this.quitMessage = getConfig().getString("quit-message", "&4- &7%player%");
 
         this.travelDirectory = shared.resolve("travel");
         try {
@@ -101,9 +108,13 @@ public class ServerPlugin extends JavaPlugin implements Listener {
 
     // --------------------------------------------------------------- presence
 
-    @EventHandler
+    // At HIGHEST so this is the last word: other plugins - EssentialsX among them -
+    // set their own join and quit lines, and whichever runs last is what players
+    // see.
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        event.setJoinMessage(announcement(this.joinMessage, player.getName()));
         this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, isModded(player));
 
         // The client sends its brand on its own schedule, and it has usually not
@@ -122,6 +133,20 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, true, modded);
             }
         }, 60L);
+    }
+
+    /**
+     * Builds a join or quit line.
+     *
+     * @return null when the configured message is blank, which is how Bukkit is
+     *         told to announce nothing at all
+     */
+    private String announcement(String template, String playerName) {
+        if (template == null || template.isBlank()) {
+            return null;
+        }
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                template.replace("%player%", playerName));
     }
 
     /**
@@ -151,9 +176,10 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        event.setQuitMessage(announcement(this.quitMessage, player.getName()));
         // Recorded as offline on this server. If they are switching servers the
         // other side overwrites this a moment later, which is the correct order.
         this.store.setPresence(player.getUniqueId(), player.getName(), this.serverName, false, isModded(player));

@@ -18,3 +18,12 @@ server-name: lobby
 # When false, the friends menu says so rather than showing a setting that quietly
 # does nothing here.
 friendly-fire-protection: true
+
+# Shown to everyone when a player arrives or leaves. Uses & colour codes, and
+# %player% for the name. Leave either blank to announce nothing.
+#
+# Set at the highest event priority, so these win over other plugins that write
+# their own join and quit lines - EssentialsX does, and whichever runs last is
+# what players actually see.
+join-message: "&a+ &7%player%"
+quit-message: "&4- &7%player%"
