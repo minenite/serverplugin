@@ -64,3 +64,8 @@ join-gamemode: ""
 
 # Lowest rank allowed to move this server's spawn. Operators always may.
 spawn-min-rank: "DEV"
+
+# Lowest rank allowed to use /warp, /setwarp and /delwarp on this server.
+# Blank means the commands are off here entirely. Operators always may when
+# warps are on. Set per server - warz1 uses MOD; most others leave this blank.
+warp-min-rank: ""

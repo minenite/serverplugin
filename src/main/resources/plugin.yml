@@ -20,6 +20,15 @@ commands:
   setspawn:
     description: Set where arrivals are put on this server. DEV and above.
     usage: /setspawn
+  setwarp:
+    description: Set a named warp at your location. Requires warp-min-rank (MOD+ on warz1).
+    usage: /setwarp <name>
+  delwarp:
+    description: Delete a named warp. Requires warp-min-rank (MOD+ on warz1).
+    usage: /delwarp <name>
+  warp:
+    description: Teleport to a named warp, or list them. Requires warp-min-rank (MOD+ on warz1).
+    usage: /warp [name]
   silentjoin:
     description: Toggle arriving and leaving unannounced. TMOD and above.
     usage: /silentjoin

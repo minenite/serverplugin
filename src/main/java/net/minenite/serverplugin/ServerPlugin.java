@@ -5,9 +5,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -90,6 +95,15 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     /** Lowest rank allowed to move the spawn point. */
     private Rank spawnRank;
 
+    /**
+     * Lowest rank allowed to use warps here; null when warps are off on this
+     * server entirely (the usual case - only warz1 turns them on).
+     */
+    private Rank warpRank;
+
+    /** Warp names: letters, digits, underscore and hyphen. */
+    private static final Pattern WARP_NAME = Pattern.compile("[a-z0-9_-]{1,32}");
+
     /** Where arrivals are put; null when this server has no spawn of its own. */
     private org.bukkit.Location spawn;
 
@@ -139,6 +153,7 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 "message-cross-server-format", "&7%sender% &8\u203a &7%target% &7&o@ %server%&8: &7&o%message%");
         this.buildRank = Rank.parse(getConfig().getString("build-min-rank", ""));
         this.spawnRank = Rank.parse(getConfig().getString("spawn-min-rank", "DEV"));
+        this.warpRank = Rank.parse(getConfig().getString("warp-min-rank", ""));
         loadSpawn();
         String mode = getConfig().getString("join-gamemode", "");
         if (mode != null && !mode.isBlank()) {
@@ -537,8 +552,43 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         }
 
         if (label.equals("/setspawn")) {
+            // Blank spawn-min-rank means another plugin owns spawn on this server
+            // (warzplugin on warz1). Leave the event alone so it can.
+            if (this.spawnRank == null) {
+                return;
+            }
             event.setCancelled(true);
             setSpawn(event.getPlayer());
+            return;
+        }
+
+        if (label.equals("/setwarp")) {
+            event.setCancelled(true);
+            if (parts.length < 2) {
+                event.getPlayer().sendMessage(ChatColor.GRAY + "Usage: /setwarp <name>");
+                return;
+            }
+            setWarp(event.getPlayer(), parts[1]);
+            return;
+        }
+
+        if (label.equals("/delwarp")) {
+            event.setCancelled(true);
+            if (parts.length < 2) {
+                event.getPlayer().sendMessage(ChatColor.GRAY + "Usage: /delwarp <name>");
+                return;
+            }
+            deleteWarp(event.getPlayer(), parts[1]);
+            return;
+        }
+
+        if (label.equals("/warp")) {
+            event.setCancelled(true);
+            if (parts.length < 2) {
+                listWarps(event.getPlayer());
+                return;
+            }
+            goToWarp(event.getPlayer(), parts[1]);
             return;
         }
 
@@ -605,6 +655,133 @@ public class ServerPlugin extends JavaPlugin implements Listener {
 
         actor.sendMessage(ChatColor.GRAY + String.format("Spawn set to %.1f, %.1f, %.1f. "
                 + "Everyone arriving here will be put there.", at.getX(), at.getY(), at.getZ()));
+    }
+
+    // ------------------------------------------------------------------ warps
+
+    /**
+     * Whether this player may use warps on this server.
+     *
+     * <p>Off entirely when {@code warp-min-rank} is blank - that is how warz1
+     * alone gets the feature without every other backend inheriting it. Judged
+     * on the held rank, not the displayed one, same as build and spawn.
+     */
+    private boolean mayUseWarps(Player player) {
+        if (this.warpRank == null) {
+            return false;
+        }
+        return player.isOp() || this.ranks.rankOf(player.getUniqueId()).atLeast(this.warpRank);
+    }
+
+    private String normaliseWarpName(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String name = raw.trim().toLowerCase(Locale.ROOT);
+        return WARP_NAME.matcher(name).matches() ? name : null;
+    }
+
+    private void setWarp(Player actor, String rawName) {
+        if (this.warpRank == null) {
+            actor.sendMessage(ChatColor.RED + "Warps are not available on this server.");
+            return;
+        }
+        if (!mayUseWarps(actor)) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to set warps.");
+            return;
+        }
+        String name = normaliseWarpName(rawName);
+        if (name == null) {
+            actor.sendMessage(ChatColor.RED + "Warp names may only use letters, digits, _ and -, up to 32 characters.");
+            return;
+        }
+        org.bukkit.Location at = actor.getLocation();
+        String path = "warps." + name;
+        getConfig().set(path + ".world", at.getWorld().getName());
+        getConfig().set(path + ".x", at.getX());
+        getConfig().set(path + ".y", at.getY());
+        getConfig().set(path + ".z", at.getZ());
+        getConfig().set(path + ".yaw", at.getYaw());
+        getConfig().set(path + ".pitch", at.getPitch());
+        saveConfig();
+        actor.sendMessage(ChatColor.GRAY + "Warp " + ChatColor.WHITE + name + ChatColor.GRAY
+                + String.format(" set to %.1f, %.1f, %.1f.", at.getX(), at.getY(), at.getZ()));
+    }
+
+    private void deleteWarp(Player actor, String rawName) {
+        if (this.warpRank == null) {
+            actor.sendMessage(ChatColor.RED + "Warps are not available on this server.");
+            return;
+        }
+        if (!mayUseWarps(actor)) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to delete warps.");
+            return;
+        }
+        String name = normaliseWarpName(rawName);
+        if (name == null) {
+            actor.sendMessage(ChatColor.RED + "No such warp.");
+            return;
+        }
+        if (!getConfig().isSet("warps." + name)) {
+            actor.sendMessage(ChatColor.RED + "No warp called " + name + ".");
+            return;
+        }
+        getConfig().set("warps." + name, null);
+        saveConfig();
+        actor.sendMessage(ChatColor.GRAY + "Deleted warp " + ChatColor.WHITE + name + ChatColor.GRAY + ".");
+    }
+
+    private void goToWarp(Player actor, String rawName) {
+        if (this.warpRank == null) {
+            actor.sendMessage(ChatColor.RED + "Warps are not available on this server.");
+            return;
+        }
+        if (!mayUseWarps(actor)) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to use warps.");
+            return;
+        }
+        String name = normaliseWarpName(rawName);
+        if (name == null || !getConfig().isSet("warps." + name + ".world")) {
+            actor.sendMessage(ChatColor.RED + "No warp called " + (name == null ? rawName : name) + ".");
+            return;
+        }
+        String path = "warps." + name;
+        org.bukkit.World world = getServer().getWorld(getConfig().getString(path + ".world"));
+        if (world == null) {
+            actor.sendMessage(ChatColor.RED + "That warp points at a world this server does not have.");
+            return;
+        }
+        org.bukkit.Location at = new org.bukkit.Location(world,
+                getConfig().getDouble(path + ".x"),
+                getConfig().getDouble(path + ".y"),
+                getConfig().getDouble(path + ".z"),
+                (float) getConfig().getDouble(path + ".yaw"),
+                (float) getConfig().getDouble(path + ".pitch"));
+        actor.teleport(at);
+        actor.sendMessage(ChatColor.GRAY + "Warped to " + ChatColor.WHITE + name + ChatColor.GRAY + ".");
+    }
+
+    private void listWarps(Player actor) {
+        if (this.warpRank == null) {
+            actor.sendMessage(ChatColor.RED + "Warps are not available on this server.");
+            return;
+        }
+        if (!mayUseWarps(actor)) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to use warps.");
+            return;
+        }
+        Set<String> keys = getConfig().getConfigurationSection("warps") == null
+                ? Collections.emptySet()
+                : getConfig().getConfigurationSection("warps").getKeys(false);
+        if (keys.isEmpty()) {
+            actor.sendMessage(ChatColor.GRAY + "No warps set. Use " + ChatColor.WHITE + "/setwarp <name>"
+                    + ChatColor.GRAY + ".");
+            return;
+        }
+        List<String> names = new ArrayList<>(keys);
+        Collections.sort(names);
+        actor.sendMessage(ChatColor.GRAY + "Warps: " + ChatColor.WHITE + String.join(ChatColor.GRAY + ", "
+                + ChatColor.WHITE, names));
     }
 
     // ------------------------------------------------------------------ build
