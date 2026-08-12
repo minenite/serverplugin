@@ -61,3 +61,6 @@ build-min-rank: ""
 # they were. A lobby is a lobby; anyone who needs another mode can set it once
 # they are inside.
 join-gamemode: ""
+
+# Lowest rank allowed to move this server's spawn. Operators always may.
+spawn-min-rank: "DEV"

@@ -87,6 +87,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     /** Mode every arrival is put into; null to leave them as they were. */
     private org.bukkit.GameMode joinGameMode;
 
+    /** Lowest rank allowed to move the spawn point. */
+    private Rank spawnRank;
+
+    /** Where arrivals are put; null when this server has no spawn of its own. */
+    private org.bukkit.Location spawn;
+
     /** Arrivals already shown, so a poll does not repeat what it saw last time. */
     private long lastArrivalSeen = System.currentTimeMillis();
 
@@ -132,6 +138,8 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         this.messageCrossServerFormat = getConfig().getString(
                 "message-cross-server-format", "&7%sender% &8\u203a &7%target% &7&o@ %server%&8: &7&o%message%");
         this.buildRank = Rank.parse(getConfig().getString("build-min-rank", ""));
+        this.spawnRank = Rank.parse(getConfig().getString("spawn-min-rank", "DEV"));
+        loadSpawn();
         String mode = getConfig().getString("join-gamemode", "");
         if (mode != null && !mode.isBlank()) {
             try {
@@ -201,6 +209,16 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         // another mode can still set it themselves once inside.
         if (this.joinGameMode != null) {
             player.setGameMode(this.joinGameMode);
+        }
+
+        // A tick later: teleporting during the join event lands before the client
+        // has finished arriving, and the move is quietly undone.
+        if (this.spawn != null) {
+            getServer().getScheduler().runTaskLater(this, () -> {
+                if (player.isOnline()) {
+                    player.teleport(this.spawn);
+                }
+            }, 1L);
         }
 
         try {
@@ -518,6 +536,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             return;
         }
 
+        if (label.equals("/setspawn")) {
+            event.setCancelled(true);
+            setSpawn(event.getPlayer());
+            return;
+        }
+
         if (label.equals("/silentjoin")) {
             event.setCancelled(true);
             toggleSilentJoin(event.getPlayer());
@@ -532,6 +556,55 @@ public class ServerPlugin extends JavaPlugin implements Listener {
             }
             setTag(event.getPlayer(), parts[1]);
         }
+    }
+
+    // ------------------------------------------------------------------ spawn
+
+    /**
+     * Reads the stored spawn.
+     *
+     * <p>Kept in this plugin's own config rather than the world's spawn point,
+     * because the two are not the same thing: the world spawn decides where the
+     * game puts somebody, and this decides where they are put on every arrival,
+     * which is what a lobby wants.
+     */
+    private void loadSpawn() {
+        if (!getConfig().isSet("spawn.world")) {
+            return;
+        }
+        org.bukkit.World world = getServer().getWorld(getConfig().getString("spawn.world"));
+        if (world == null) {
+            getLogger().warning("The stored spawn names a world this server does not have: "
+                    + getConfig().getString("spawn.world"));
+            return;
+        }
+        this.spawn = new org.bukkit.Location(world,
+                getConfig().getDouble("spawn.x"), getConfig().getDouble("spawn.y"), getConfig().getDouble("spawn.z"),
+                (float) getConfig().getDouble("spawn.yaw"), (float) getConfig().getDouble("spawn.pitch"));
+    }
+
+    private void setSpawn(Player actor) {
+        if (!actor.isOp() && (this.spawnRank == null
+                || !this.ranks.rankOf(actor.getUniqueId()).atLeast(this.spawnRank))) {
+            actor.sendMessage(ChatColor.RED + "You are not allowed to set the spawn.");
+            return;
+        }
+        org.bukkit.Location at = actor.getLocation();
+        this.spawn = at;
+        getConfig().set("spawn.world", at.getWorld().getName());
+        getConfig().set("spawn.x", at.getX());
+        getConfig().set("spawn.y", at.getY());
+        getConfig().set("spawn.z", at.getZ());
+        getConfig().set("spawn.yaw", at.getYaw());
+        getConfig().set("spawn.pitch", at.getPitch());
+        saveConfig();
+
+        // The world spawn is set alongside it, so anything that asks the game
+        // rather than this plugin - a respawn, a compass - agrees.
+        at.getWorld().setSpawnLocation(at);
+
+        actor.sendMessage(ChatColor.GRAY + String.format("Spawn set to %.1f, %.1f, %.1f. "
+                + "Everyone arriving here will be put there.", at.getX(), at.getY(), at.getZ()));
     }
 
     // ------------------------------------------------------------------ build

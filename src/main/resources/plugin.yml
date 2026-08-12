@@ -17,6 +17,9 @@ commands:
   setrank:
     description: Set a player's rank across the network. SMOD and above, or operators.
     usage: /setrank <username> <rank>
+  setspawn:
+    description: Set where arrivals are put on this server. DEV and above.
+    usage: /setspawn
   silentjoin:
     description: Toggle arriving and leaving unannounced. TMOD and above.
     usage: /silentjoin
