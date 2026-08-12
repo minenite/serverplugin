@@ -26,7 +26,7 @@ public enum Rank {
     TMOD("TMOD", "&f", "&d"),
     BUILDER("BUILDER", "&f", "&3"),
     ELITE("ELITE", "&a", "&7"),
-    MVP("MVP", "&1", "&7"),
+    MVP("MVP", "&9", "&7"),
     VIP("VIP", "&b", "&7"),
 
     /** No rank: no label, and a name like anybody else's. */
