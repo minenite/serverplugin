@@ -18,6 +18,8 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
@@ -79,6 +81,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
     private String messageCrossServerFormat;
     private String messageSentFormat;
 
+    /** Lowest rank allowed to build here; null when anyone may. */
+    private Rank buildRank;
+
+    /** Mode every arrival is put into; null to leave them as they were. */
+    private org.bukkit.GameMode joinGameMode;
+
     /** Arrivals already shown, so a poll does not repeat what it saw last time. */
     private long lastArrivalSeen = System.currentTimeMillis();
 
@@ -123,6 +131,16 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 "message-format", "&7%sender% &8\u203a &7%target%&8: &7&o%message%");
         this.messageCrossServerFormat = getConfig().getString(
                 "message-cross-server-format", "&7%sender% &8\u203a &7%target% &7&o@ %server%&8: &7&o%message%");
+        this.buildRank = Rank.parse(getConfig().getString("build-min-rank", ""));
+        String mode = getConfig().getString("join-gamemode", "");
+        if (mode != null && !mode.isBlank()) {
+            try {
+                this.joinGameMode = org.bukkit.GameMode.valueOf(mode.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException notAMode) {
+                getLogger().warning("join-gamemode is not a game mode: " + mode);
+            }
+        }
+
         this.messageSentFormat = getConfig().getString(
                 "message-sent-format", "&7%sender% &8\u203a &7%target%&8: &7&o%message%");
 
@@ -178,6 +196,12 @@ public class ServerPlugin extends JavaPlugin implements Listener {
         }
         player.setPlayerListName(
                 this.ranks.displayedRankOf(player.getUniqueId()).colouredName(player.getName()));
+
+        // Applied to everyone, staff included: a lobby is a lobby. Anyone who needs
+        // another mode can still set it themselves once inside.
+        if (this.joinGameMode != null) {
+            player.setGameMode(this.joinGameMode);
+        }
 
         try {
             if (!silent) {
@@ -507,6 +531,35 @@ public class ServerPlugin extends JavaPlugin implements Listener {
                 return;
             }
             setTag(event.getPlayer(), parts[1]);
+        }
+    }
+
+    // ------------------------------------------------------------------ build
+
+    /**
+     * Whether this player may change blocks here.
+     *
+     * <p>Judged on the rank they hold rather than the one they are displaying: an
+     * admin choosing to show as a lesser rank has not given up their access.
+     */
+    private boolean mayBuild(Player player) {
+        if (this.buildRank == null || player.isOp()) {
+            return true;
+        }
+        return this.ranks.rankOf(player.getUniqueId()).atLeast(this.buildRank);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (!mayBuild(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (!mayBuild(event.getPlayer())) {
+            event.setCancelled(true);
         }
     }
 

@@ -51,3 +51,13 @@ friend-request-declined: "&e%player% &cdeclined &e&oyour friend request :'("
 message-format: "&7%sender% &8› &7%target%&8: &7&o%message%"
 message-cross-server-format: "&7%sender% &8› &7%target% &7&o@ %server%&8: &7&o%message%"
 message-sent-format: "&7%sender% &8› &7%target%&8: &7&o%message%"
+
+# Lowest rank allowed to place or break blocks here. Blank means anyone may, and
+# operators always may. Judged on the rank held rather than the one displayed: an
+# admin showing a lesser rank has not given up their access.
+build-min-rank: ""
+
+# Game mode every arrival is put into, whatever their rank. Blank leaves them as
+# they were. A lobby is a lobby; anyone who needs another mode can set it once
+# they are inside.
+join-gamemode: ""
